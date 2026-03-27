@@ -1,0 +1,14 @@
+[project]
+name = "dark-factory"
+version = "0.1.0"
+description = "Autonomous code quality pipeline using claude -p and deterministic metric tools"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml",
+    "radon",
+    "diff-cover",
+    "ruff",
+]
+
+[tool.setuptools]
+packages = []

@@ -1,0 +1,54 @@
+# Dark Factory Configuration
+# ===========================
+# Default configuration for the dark-factory pipeline.
+# Copy this to your project and override values as needed.
+
+# Base branch for computing diffs (three-dot diff: base...HEAD)
+base_branch: origin/main
+
+# Test command — run from the repo root after fixes are applied.
+# Uncomment and set to your project's test command.
+# The pipeline will skip test steps if this is not configured.
+# test_command: "npm test"
+
+# Maximum number of review-fix iterations before stopping.
+# Each iteration: emit issues -> coherence -> fix -> test -> metrics -> verify.
+# Diminishing returns after 2 iterations.
+max_iterations: 2
+
+# Metric thresholds
+# Violations are reported when a metric exceeds its threshold.
+metrics:
+  # Maximum cyclomatic complexity per function (radon cc)
+  cyclomatic_complexity_threshold: 10
+
+  # Maximum function length in lines
+  function_length_threshold: 50
+
+  # Maximum file length in lines
+  file_length_threshold: 500
+
+  # Minimum % of new/changed lines that must have test coverage (diff-cover)
+  coverage_delta_minimum: 80
+
+  # Minimum token count for jscpd to flag duplication
+  duplication_min_tokens: 50
+
+# Timeouts in milliseconds for each pipeline step.
+# These are passed to the claude -p subprocess via invoke.py.
+timeouts:
+  review_emit: 600000    # 10 min — LLM analysis of full diff
+  coherence: 300000      #  5 min — lightweight consolidation pass
+  fix: 600000            # 10 min — applying fixes with full tool access
+  metrics_fix: 300000    #  5 min — mechanical metric violation fixes
+  verify: 600000         # 10 min — abbreviated re-review
+  simplify: 600000       # 10 min — code simplification pass
+  test: 600000           # 10 min — running the project's test suite
+
+# Notification command (optional)
+# Executed when the pipeline needs human attention (e.g., test failures, escalation).
+# For macOS local use:
+#   notification_command: "osascript -e 'display notification \"Dark Factory needs attention\" with title \"Dark Factory\"'"
+# For CI/Slack:
+#   notification_command: "curl -X POST -H 'Content-type: application/json' --data '{\"text\":\"Dark Factory needs attention\"}' YOUR_WEBHOOK_URL"
+# notification_command:
