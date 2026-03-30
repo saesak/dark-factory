@@ -2,6 +2,11 @@
 
 Autonomous code quality pipeline that reviews code changes, applies fixes, and verifies results — all headlessly using `claude -p` subprocess calls and deterministic metric tools.
 
+## What You Need to Know
+
+running it with default settings pushes commits to your branch automatically. Running it with dry run lets you surface issues. For large PRs (1000+ lines), run multiple parallel dark factory runs on different parts of the code. 
+
+
 ## What It Does
 
 Point it at a branch with code changes and it runs a multi-step review pipeline:
