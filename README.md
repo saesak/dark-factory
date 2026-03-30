@@ -4,7 +4,11 @@ Autonomous code quality pipeline that reviews code changes, applies fixes, and v
 
 ## What You Need to Know
 
-running it with default settings pushes commits to your branch automatically. Running it with dry run lets you surface issues. For large PRs (1000+ lines), run multiple parallel dark factory runs on different parts of the code. 
+running it with default settings pushes commits to your branch automatically. 
+
+Running it with dry run lets you surface issues. 
+
+For large PRs (1000+ lines), run multiple parallel dark factory runs on different parts of the code. 
 
 
 ## What It Does
