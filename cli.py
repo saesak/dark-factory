@@ -184,6 +184,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Comma-separated list of files to scope the review to",
     )
+    review_parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Model override for claude -p (e.g. opus, sonnet, haiku)",
+    )
 
     # --- stub subcommands ---
     subparsers.add_parser("plan", help="Planner agent (not yet implemented)")
@@ -250,6 +256,7 @@ def cmd_review(args: argparse.Namespace, config: dict[str, Any]) -> None:
     config["no_docs"] = args.no_docs
     config["scope"] = args.scope
     config["files"] = args.files.split(",") if args.files else None
+    config["model"] = args.model
 
     from stages.review import run
 

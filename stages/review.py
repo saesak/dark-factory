@@ -101,6 +101,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
     timeouts: dict[str, int] = config.get("timeouts", {})
     scope: str | None = config.get("scope")
     files: list[str] | None = config.get("files")
+    model: str | None = config.get("model")
     pr_config: dict[str, Any] | None = config.get("pr")
 
     # Determine test working directory — monorepo subpackages run tests from scope dir
@@ -234,6 +235,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                 steps_log,
                 scope,
                 files=files,
+                model=model,
             )
             if test_command:
                 test_ok: bool = _run_step_test(
@@ -274,6 +276,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
             repo_path,
             steps_log,
             files=files,
+            model=model,
         )
         if not emit_output:
             final_status = "error"
@@ -322,6 +325,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                 repo_path,
                 steps_log,
                 files=files,
+                model=model,
             )
             if not emit_output:
                 final_status = "error"
@@ -340,6 +344,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
             timeouts,
             repo_path,
             steps_log,
+            model=model,
         )
         if not coherence_output:
             final_status = "error"
@@ -357,6 +362,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
             steps_log,
             scope,
             files=files,
+            model=model,
         )
         if not fix_output:
             final_status = "error"
@@ -393,6 +399,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                     steps_log,
                     scope,
                     files=files,
+                    model=model,
                 )
 
                 # Step 7: Run Tests Again (only if step 6 ran)
@@ -425,6 +432,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
             timeouts,
             repo_path,
             steps_log,
+            model=model,
         )
 
         iterations_completed = iteration
@@ -476,6 +484,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                 steps_log,
                 scope,
                 files=files,
+                model=model,
             )
             # Run tests after simplification if configured
             if test_command:
@@ -500,6 +509,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                 steps_log,
                 scope,
                 files=files,
+                model=model,
             )
 
     # Correct issue accounting: remaining = found - fixed
@@ -539,6 +549,7 @@ def _run_step_emit(
     repo_path: str,
     steps_log: list[dict[str, Any]],
     files: list[str] | None = None,
+    model: str | None = None,
 ) -> str:
     """Step 1: LLM Review — Emit Issues."""
     print("[Step 1/8] Running LLM review (emit issues)...")
@@ -563,7 +574,7 @@ def _run_step_emit(
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_review_emit_debug.txt")
     result: dict = invoke_claude(
-        prompt, READONLY_TOOLS, timeout, repo_path, debug_file=debug_file
+        prompt, READONLY_TOOLS, timeout, repo_path, debug_file=debug_file, model=model
     )
 
     output: str = result["stdout"]
@@ -603,6 +614,7 @@ def _run_step_coherence(
     timeouts: dict[str, int],
     repo_path: str,
     steps_log: list[dict[str, Any]],
+    model: str | None = None,
 ) -> str:
     """Step 2: Coherence Check."""
     print("[Step 2/8] Running coherence check...")
@@ -620,7 +632,7 @@ def _run_step_coherence(
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_coherence_debug.txt")
     result: dict = invoke_claude(
-        prompt, READONLY_TOOLS, timeout, repo_path, debug_file=debug_file
+        prompt, READONLY_TOOLS, timeout, repo_path, debug_file=debug_file, model=model
     )
 
     output: str = result["stdout"]
@@ -662,6 +674,7 @@ def _run_step_fix(
     steps_log: list[dict[str, Any]],
     scope: str | None = None,
     files: list[str] | None = None,
+    model: str | None = None,
 ) -> str:
     """Step 3: Apply Fixes."""
     print("[Step 3/8] Applying fixes...")
@@ -695,7 +708,7 @@ def _run_step_fix(
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_fix_debug.txt")
     result: dict = invoke_claude(
-        prompt, WRITE_TOOLS, timeout, repo_path, debug_file=debug_file
+        prompt, WRITE_TOOLS, timeout, repo_path, debug_file=debug_file, model=model
     )
 
     output: str = result["stdout"]
@@ -865,6 +878,7 @@ def _run_step_metrics_fix(
     steps_log: list[dict[str, Any]],
     scope: str | None = None,
     files: list[str] | None = None,
+    model: str | None = None,
 ) -> str:
     """Step 6: Fix Metric Violations."""
     print("[Step 6/8] Fixing metric violations...")
@@ -896,7 +910,7 @@ def _run_step_metrics_fix(
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_metrics_fix_debug.txt")
     result: dict = invoke_claude(
-        prompt, WRITE_TOOLS, timeout, repo_path, debug_file=debug_file
+        prompt, WRITE_TOOLS, timeout, repo_path, debug_file=debug_file, model=model
     )
 
     output: str = result["stdout"]
@@ -936,6 +950,7 @@ def _run_step_verify(
     timeouts: dict[str, int],
     repo_path: str,
     steps_log: list[dict[str, Any]],
+    model: str | None = None,
 ) -> str:
     """Step 8: Verification."""
     print("[Step 8/8] Running verification...")
@@ -953,7 +968,7 @@ def _run_step_verify(
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_verify_debug.txt")
     result: dict = invoke_claude(
-        prompt, READONLY_TOOLS, timeout, repo_path, debug_file=debug_file
+        prompt, READONLY_TOOLS, timeout, repo_path, debug_file=debug_file, model=model
     )
 
     output: str = result["stdout"]
@@ -994,6 +1009,7 @@ def _run_step_simplify(
     steps_log: list[dict[str, Any]],
     scope: str | None = None,
     files: list[str] | None = None,
+    model: str | None = None,
 ) -> str:
     """Step 9: Simplify — code reuse, quality, and efficiency pass."""
     print("[Step 9] Running code simplification...")
@@ -1024,7 +1040,7 @@ def _run_step_simplify(
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_simplify_debug.txt")
     result: dict = invoke_claude(
-        prompt, WRITE_TOOLS, timeout, repo_path, debug_file=debug_file
+        prompt, WRITE_TOOLS, timeout, repo_path, debug_file=debug_file, model=model
     )
 
     output: str = result["stdout"]
@@ -1065,6 +1081,7 @@ def _run_step_update_docs(
     steps_log: list[dict[str, Any]],
     scope: str | None = None,
     files: list[str] | None = None,
+    model: str | None = None,
 ) -> str:
     """Step 11: Update Docs — update markdown docs near changed files."""
     print("[Step 11] Updating documentation...")
@@ -1095,7 +1112,7 @@ def _run_step_update_docs(
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_update_docs_debug.txt")
     result: dict = invoke_claude(
-        prompt, WRITE_TOOLS, timeout, repo_path, debug_file=debug_file
+        prompt, WRITE_TOOLS, timeout, repo_path, debug_file=debug_file, model=model
     )
 
     output: str = result["stdout"]

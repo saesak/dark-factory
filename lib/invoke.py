@@ -49,6 +49,7 @@ def invoke_claude(
     working_dir: str,
     max_retries: int = 2,
     debug_file: str | None = None,
+    model: str | None = None,
 ) -> dict:
     """Call claude -p as a subprocess and capture the result.
 
@@ -65,6 +66,7 @@ def invoke_claude(
         working_dir: Working directory for the subprocess (the repo being reviewed).
         max_retries: Number of retry attempts on non-zero exit code (default: 2).
         debug_file: Optional path to write Claude debug logs (plugins, settings, etc.).
+        model: Optional model override (e.g. "opus", "sonnet", "haiku").
 
     Returns:
         A dict with keys:
@@ -75,6 +77,9 @@ def invoke_claude(
             - wall_clock_ms: int
     """
     cmd: list[str] = ["claude", "-p", "--print"]
+
+    if model:
+        cmd.extend(["--model", model])
 
     if debug_file:
         cmd.extend(["--debug-file", debug_file])
