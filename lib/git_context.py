@@ -80,19 +80,28 @@ def list_pr_changed_files(repo: str, pr_number: int) -> list[str]:
     return files
 
 
-def compute_diff(repo_path: str, base_branch: str, scope: str | None = None) -> str:
+def compute_diff(
+    repo_path: str,
+    base_branch: str,
+    scope: str | None = None,
+    files: list[str] | None = None,
+) -> str:
     """Compute three-dot diff between base branch and HEAD.
 
     Args:
         repo_path: Absolute path to the git repository.
         base_branch: Base branch for the diff (e.g. "origin/main").
         scope: Optional subdirectory to scope the diff to (e.g. "backend/").
+        files: Optional list of file paths to scope the diff to. Takes
+            precedence over scope if both are provided.
 
     Returns:
         The diff output as a string. Empty string if no diff or on error.
     """
     cmd: list[str] = ["git", "diff", f"{base_branch}...HEAD"]
-    if scope:
+    if files:
+        cmd.extend(["--"] + files)
+    elif scope:
         cmd.extend(["--", scope])
     result: subprocess.CompletedProcess[str] = subprocess.run(
         cmd,
@@ -107,7 +116,10 @@ def compute_diff(repo_path: str, base_branch: str, scope: str | None = None) -> 
 
 
 def list_changed_files(
-    repo_path: str, base_branch: str, scope: str | None = None
+    repo_path: str,
+    base_branch: str,
+    scope: str | None = None,
+    files: list[str] | None = None,
 ) -> list[str]:
     """List files changed between base branch and HEAD.
 
@@ -115,12 +127,16 @@ def list_changed_files(
         repo_path: Absolute path to the git repository.
         base_branch: Base branch for the diff (e.g. "origin/main").
         scope: Optional subdirectory to scope the file list to (e.g. "backend/").
+        files: Optional list of file paths to scope the file list to. Takes
+            precedence over scope if both are provided.
 
     Returns:
         List of file paths relative to the repo root.
     """
     cmd: list[str] = ["git", "diff", "--name-only", f"{base_branch}...HEAD"]
-    if scope:
+    if files:
+        cmd.extend(["--"] + files)
+    elif scope:
         cmd.extend(["--", scope])
     result: subprocess.CompletedProcess[str] = subprocess.run(
         cmd,

@@ -178,6 +178,12 @@ def build_parser() -> argparse.ArgumentParser:
             "are scoped to this subdirectory. Useful for monorepo subdirectories."
         ),
     )
+    review_parser.add_argument(
+        "--files",
+        type=str,
+        default=None,
+        help="Comma-separated list of files to scope the review to",
+    )
 
     # --- stub subcommands ---
     subparsers.add_parser("plan", help="Planner agent (not yet implemented)")
@@ -198,6 +204,9 @@ def cmd_review(args: argparse.Namespace, config: dict[str, Any]) -> None:
     # Validate conflicting flags
     if args.pr is not None and args.base is not None:
         print("Error: --pr and --base are mutually exclusive")
+        sys.exit(1)
+    if args.files is not None and args.scope is not None:
+        print("Error: --files and --scope are mutually exclusive")
         sys.exit(1)
     if args.metrics_only and args.no_metrics:
         print("Error: --metrics-only and --no-metrics are mutually exclusive")
@@ -240,6 +249,7 @@ def cmd_review(args: argparse.Namespace, config: dict[str, Any]) -> None:
     config["no_simplify"] = args.no_simplify
     config["no_docs"] = args.no_docs
     config["scope"] = args.scope
+    config["files"] = args.files.split(",") if args.files else None
 
     from stages.review import run
 

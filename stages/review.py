@@ -100,6 +100,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
     test_command: str | None = config.get("test_command")
     timeouts: dict[str, int] = config.get("timeouts", {})
     scope: str | None = config.get("scope")
+    files: list[str] | None = config.get("files")
     pr_config: dict[str, Any] | None = config.get("pr")
 
     # Determine test working directory — monorepo subpackages run tests from scope dir
@@ -137,18 +138,28 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
             f"This is the authoritative diff for this review. Do NOT use any other diff."
         )
     else:
-        scope_suffix: str = f" -- {scope}" if scope else ""
+        if files:
+            files_suffix: str = " -- " + " ".join(files)
+        elif scope:
+            files_suffix = f" -- {scope}"
+        else:
+            files_suffix = ""
         original_context_instructions = (
             f"Run this command to fetch the diff:\n\n"
-            f"```bash\ngit diff {base_branch}...HEAD{scope_suffix}\n```\n\n"
+            f"```bash\ngit diff {base_branch}...HEAD{files_suffix}\n```\n\n"
             f"This is the authoritative diff for this review. Do NOT use any other diff."
         )
 
     # current_context_instructions always uses local git diff (fixes have been applied locally)
-    current_scope_suffix: str = f" -- {scope}" if scope else ""
+    if files:
+        current_suffix: str = " -- " + " ".join(files)
+    elif scope:
+        current_suffix = f" -- {scope}"
+    else:
+        current_suffix = ""
     current_context_instructions: str = (
         f"Run this command to fetch the current diff (includes all applied fixes):\n\n"
-        f"```bash\ngit diff {base_branch}...HEAD{current_scope_suffix}\n```\n\n"
+        f"```bash\ngit diff {base_branch}...HEAD{current_suffix}\n```\n\n"
         f"This is the authoritative diff for this review. Do NOT use any other diff."
     )
 
@@ -156,7 +167,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
     if pr_config:
         changed_files = list_pr_changed_files(pr_config["repo"], pr_config["number"])
     else:
-        changed_files = list_changed_files(repo_path, base_branch, scope)
+        changed_files = list_changed_files(repo_path, base_branch, scope, files)
     changed_files_str: str = "\n".join(changed_files)
     sha_start: str = get_current_sha(repo_path)
 
@@ -185,7 +196,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
             f"[PR mode] See gh pr diff {pr_config['number']} --repo {pr_config['repo']}",
         )
     else:
-        diff: str = compute_diff(repo_path, base_branch, scope)
+        diff: str = compute_diff(repo_path, base_branch, scope, files)
         save_diff_snapshot(run_dir, diff)
 
     # Initialize timing and result tracking
@@ -222,6 +233,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                 repo_path,
                 steps_log,
                 scope,
+                files=files,
             )
             if test_command:
                 test_ok: bool = _run_step_test(
@@ -261,6 +273,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
             timeouts,
             repo_path,
             steps_log,
+            files=files,
         )
         if not emit_output:
             final_status = "error"
@@ -294,7 +307,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
 
         # Recompute changed files for iterations > 1 (fixes may have changed things)
         if iteration > 1:
-            changed_files = list_changed_files(repo_path, base_branch, scope)
+            changed_files = list_changed_files(repo_path, base_branch, scope, files)
             changed_files_str = "\n".join(changed_files)
 
         # Step 1: LLM Review — Emit Issues (only on first iteration)
@@ -308,6 +321,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                 timeouts,
                 repo_path,
                 steps_log,
+                files=files,
             )
             if not emit_output:
                 final_status = "error"
@@ -342,6 +356,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
             repo_path,
             steps_log,
             scope,
+            files=files,
         )
         if not fix_output:
             final_status = "error"
@@ -377,6 +392,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                     repo_path,
                     steps_log,
                     scope,
+                    files=files,
                 )
 
                 # Step 7: Run Tests Again (only if step 6 ran)
@@ -395,7 +411,9 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
             print("[Step 5-7] Skipping metrics — --no-metrics flag set")
 
         # Step 8: Verification
-        updated_files: list[str] = list_changed_files(repo_path, base_branch, scope)
+        updated_files: list[str] = list_changed_files(
+            repo_path, base_branch, scope, files
+        )
         updated_files_str: str = "\n".join(updated_files)
 
         verify_output: str = _run_step_verify(
@@ -443,7 +461,9 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
 
     # Step 9: Simplify — runs once after all review iterations
     if final_status in ("pass", "max_iterations") and not dry_run and not no_simplify:
-        simplify_files: list[str] = list_changed_files(repo_path, base_branch, scope)
+        simplify_files: list[str] = list_changed_files(
+            repo_path, base_branch, scope, files
+        )
         simplify_files_str: str = "\n".join(simplify_files)
         if simplify_files:
             _run_step_simplify(
@@ -455,6 +475,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                 repo_path,
                 steps_log,
                 scope,
+                files=files,
             )
             # Run tests after simplification if configured
             if test_command:
@@ -466,7 +487,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
 
     # Step 11: Update Docs — update markdown docs near changed files
     if final_status in ("pass", "max_iterations") and not dry_run and not no_docs:
-        docs_files: list[str] = list_changed_files(repo_path, base_branch, scope)
+        docs_files: list[str] = list_changed_files(repo_path, base_branch, scope, files)
         docs_files_str: str = "\n".join(docs_files)
         if docs_files:
             _run_step_update_docs(
@@ -478,6 +499,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                 repo_path,
                 steps_log,
                 scope,
+                files=files,
             )
 
     # Correct issue accounting: remaining = found - fixed
@@ -516,6 +538,7 @@ def _run_step_emit(
     timeouts: dict[str, int],
     repo_path: str,
     steps_log: list[dict[str, Any]],
+    files: list[str] | None = None,
 ) -> str:
     """Step 1: LLM Review — Emit Issues."""
     print("[Step 1/8] Running LLM review (emit issues)...")
@@ -530,6 +553,13 @@ def _run_step_emit(
             "BASE_BRANCH": base_branch,
         },
     )
+
+    if files:
+        files_note: str = (
+            f"\n\nNOTE: This review is scoped to the following files: {', '.join(files)}. "
+            f"Focus your review on these files only.\n"
+        )
+        prompt = files_note + prompt
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_review_emit_debug.txt")
     result: dict = invoke_claude(
@@ -631,6 +661,7 @@ def _run_step_fix(
     repo_path: str,
     steps_log: list[dict[str, Any]],
     scope: str | None = None,
+    files: list[str] | None = None,
 ) -> str:
     """Step 3: Apply Fixes."""
     print("[Step 3/8] Applying fixes...")
@@ -645,9 +676,16 @@ def _run_step_fix(
 
     prompt: str = build_prompt(PROMPT_FIX, variables)
 
-    # When scoped to a monorepo subdirectory, add context so the fix agent
-    # knows file paths are relative to repo root, not the scope directory.
-    if scope:
+    # When scoped to specific files, add context so the fix agent focuses there.
+    if files:
+        files_note: str = (
+            f"\n\nNOTE: This review is scoped to the following files: {', '.join(files)}. "
+            f"Focus your fixes on these files only.\n"
+        )
+        prompt = files_note + prompt
+    elif scope:
+        # When scoped to a monorepo subdirectory, add context so the fix agent
+        # knows file paths are relative to repo root, not the scope directory.
         scope_note: str = (
             f"\n\nNOTE: This review is scoped to the `{scope}` subdirectory "
             f"of a monorepo. All file paths are relative to the repo root. "
@@ -826,6 +864,7 @@ def _run_step_metrics_fix(
     repo_path: str,
     steps_log: list[dict[str, Any]],
     scope: str | None = None,
+    files: list[str] | None = None,
 ) -> str:
     """Step 6: Fix Metric Violations."""
     print("[Step 6/8] Fixing metric violations...")
@@ -841,7 +880,13 @@ def _run_step_metrics_fix(
         },
     )
 
-    if scope:
+    if files:
+        files_note: str = (
+            f"\n\nNOTE: This review is scoped to the following files: {', '.join(files)}. "
+            f"Focus your fixes on these files only.\n"
+        )
+        prompt = files_note + prompt
+    elif scope:
         scope_note: str = (
             f"\n\nNOTE: This review is scoped to the `{scope}` subdirectory "
             f"of a monorepo. All file paths are relative to the repo root. "
@@ -948,6 +993,7 @@ def _run_step_simplify(
     repo_path: str,
     steps_log: list[dict[str, Any]],
     scope: str | None = None,
+    files: list[str] | None = None,
 ) -> str:
     """Step 9: Simplify — code reuse, quality, and efficiency pass."""
     print("[Step 9] Running code simplification...")
@@ -962,7 +1008,13 @@ def _run_step_simplify(
         },
     )
 
-    if scope:
+    if files:
+        files_note: str = (
+            f"\n\nNOTE: This review is scoped to the following files: {', '.join(files)}. "
+            f"Focus your simplifications on these files only.\n"
+        )
+        prompt = files_note + prompt
+    elif scope:
         scope_note: str = (
             f"\n\nNOTE: This review is scoped to the `{scope}` subdirectory "
             f"of a monorepo. All file paths are relative to the repo root. "
@@ -1012,6 +1064,7 @@ def _run_step_update_docs(
     repo_path: str,
     steps_log: list[dict[str, Any]],
     scope: str | None = None,
+    files: list[str] | None = None,
 ) -> str:
     """Step 11: Update Docs — update markdown docs near changed files."""
     print("[Step 11] Updating documentation...")
@@ -1026,7 +1079,13 @@ def _run_step_update_docs(
         },
     )
 
-    if scope:
+    if files:
+        files_note: str = (
+            f"\n\nNOTE: This review is scoped to the following files: {', '.join(files)}. "
+            f"Focus on documentation files near these files.\n"
+        )
+        prompt = files_note + prompt
+    elif scope:
         scope_note: str = (
             f"\n\nNOTE: This review is scoped to the `{scope}` subdirectory "
             f"of a monorepo. All file paths are relative to the repo root. "
