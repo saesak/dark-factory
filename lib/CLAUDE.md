@@ -18,6 +18,7 @@ Wraps `claude -p` subprocess calls. Every LLM agent invocation in the pipeline g
 
 - **Build prompt from template:** Read a `.md` file from `prompts/`, replace `{{VARIABLE_NAME}}` placeholders with provided context values
 - **Call subprocess:** Invoke `claude -p "<prompt>" --allowedTools <tools>` with configurable timeout
+- **Model override:** When `model` is provided (e.g. `"opus"`, `"sonnet"`, `"haiku"`), passes `--model <name>` to `claude -p`
 - **Capture output:** Collect stdout, stderr, exit code, wall clock time
 - **Retry on transient failures:** On non-zero exit codes, retries up to `max_retries` times (default: 2) before returning the failure. Does NOT retry on timeouts or missing CLI (those aren't transient).
 - **Handle failures:** Timeout, non-zero exit code, empty output — return structured error, never raise
@@ -28,8 +29,8 @@ Returns a result dict: `{"exit_code": int, "stdout": str, "stderr": str, "wall_c
 
 Computes everything the pipeline needs to know about the current git state. Pure functions — no side effects, no writing to disk.
 
-- **compute_diff(repo_path, base_branch, scope=None):** Three-dot diff (`git diff base...HEAD`). When `scope` is set, appends `-- {scope}` to limit the diff to a subdirectory.
-- **list_changed_files(repo_path, base_branch, scope=None):** List of file paths changed relative to base. When `scope` is set, appends `-- {scope}` to limit to a subdirectory.
+- **compute_diff(repo_path, base_branch, scope=None, files=None):** Three-dot diff (`git diff base...HEAD`). When `files` is set, appends `-- file1 file2` to limit the diff to specific files (takes precedence over `scope`). When `scope` is set, appends `-- {scope}` to limit the diff to a subdirectory.
+- **list_changed_files(repo_path, base_branch, scope=None, files=None):** List of file paths changed relative to base. When `files` is set, appends `-- file1 file2` to limit to specific files (takes precedence over `scope`). When `scope` is set, appends `-- {scope}` to limit to a subdirectory. Note: the local variable for the result is named `changed` (not `files`) to avoid shadowing the parameter.
 - **detect_worktree_name():** If running in a git worktree, return its name. Otherwise return None.
 - **get_branch_name():** Current branch name
 - **get_repo_root():** Absolute path to repo root

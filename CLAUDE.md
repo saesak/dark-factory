@@ -50,16 +50,30 @@ For development iteration:
 - `--no-metrics` to test just the LLM review path
 - `--no-simplify` to skip the code simplification pass
 - `--scope <path>` to scope the review to a monorepo subdirectory
+- `--files <a.py,b.py>` to scope the review to specific files (comma-separated)
+- `--model <name>` to override the model for `claude -p` (e.g. `opus`, `sonnet`, `haiku`)
+
+**Mutual exclusivity:** `--files`, `--scope`, and `--pr` are mutually exclusive. You can only use one at a time.
 
 Check `~/.dark-factory/runs/` for output logs after each run.
 
-## Monorepo Support
+## Scoping: Monorepo and File-Level
+
+### `--scope` (monorepo subdirectory)
 
 The `--scope` flag scopes the review pipeline to a subdirectory within a monorepo. When set:
 - Git diffs and changed files are filtered to the scope path
 - Tests run from `{repo_path}/{scope}` (subpackages have their own test runners)
 - `coverage.xml` is looked up in the scope directory first, then the repo root
 - Fix agents work from the repo root but are instructed to focus on the scoped subdirectory
+
+### `--files` (explicit file list)
+
+The `--files` flag scopes the review to a comma-separated list of specific files. When set:
+- Git diffs are filtered to the listed files (`git diff base...HEAD -- file1 file2`)
+- Changed file list is filtered to the listed files
+- `--files` takes precedence over `--scope` if both are somehow provided to `compute_diff` / `list_changed_files`
+- Fix agents are instructed to focus on the listed files only
 
 ## Reference
 

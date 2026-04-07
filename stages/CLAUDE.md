@@ -30,7 +30,9 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
         config: Parsed config.yaml merged with CLI overrides.
             Always contains: base_branch, max_iterations, metrics thresholds, timeouts.
             May contain: name (override), dry_run, metrics_only, no_metrics,
-            scope (str | None — subdirectory to scope review to for monorepo support).
+            scope (str | None — subdirectory to scope review to for monorepo support),
+            files (list[str] | None — explicit file list to scope review to),
+            model (str | None — model override for claude -p, e.g. "opus", "sonnet").
 
     Returns:
         Result dict with at minimum:
@@ -47,6 +49,14 @@ Stages use `lib/` for all infrastructure:
 - `lib/run_logger.py` for creating run directories and writing outputs
 
 Stages should NOT directly call `subprocess.run()` for claude invocations — always go through `lib/invoke.py`.
+
+### Scope/Files Note Helper
+
+`_build_scope_note(files, scope, verb)` is a DRY helper used by step functions to prepend a scope or file-list note to agent prompts. It returns a note string if `files` or `scope` is set, or `""` otherwise. The `verb` parameter customizes the instruction (e.g. `"review"`, `"fixes"`, `"simplifications"`). All step functions that support scoping call this instead of duplicating the logic.
+
+### Model Override
+
+Step functions that invoke `claude -p` accept an optional `model` parameter. When set, it is forwarded to `invoke_claude(model=model)`, which passes `--model <name>` to the CLI. The `run()` function reads `config["model"]` and threads it through to every step.
 
 ### Error Handling
 
