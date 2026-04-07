@@ -1,8 +1,0 @@
-README.md
-pyproject.toml
-dark_factory.egg-info/PKG-INFO
-dark_factory.egg-info/SOURCES.txt
-dark_factory.egg-info/dependency_links.txt
-dark_factory.egg-info/requires.txt
-dark_factory.egg-info/top_level.txt
-tests/test_basic.py

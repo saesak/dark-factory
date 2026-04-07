@@ -214,6 +214,9 @@ def cmd_review(args: argparse.Namespace, config: dict[str, Any]) -> None:
     if args.files is not None and args.scope is not None:
         print("Error: --files and --scope are mutually exclusive")
         sys.exit(1)
+    if args.files is not None and args.pr is not None:
+        print("Error: --files and --pr are mutually exclusive")
+        sys.exit(1)
     if args.metrics_only and args.no_metrics:
         print("Error: --metrics-only and --no-metrics are mutually exclusive")
         sys.exit(1)

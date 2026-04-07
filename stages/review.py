@@ -539,6 +539,26 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
 # --- Step Implementations ---
 
 
+def _build_scope_note(
+    files: list[str] | None,
+    scope: str | None,
+    verb: str,
+) -> str:
+    """Build a scope/files note to prepend to agent prompts."""
+    if files:
+        return (
+            f"\n\nNOTE: This review is scoped to the following files: {', '.join(files)}. "
+            f"Focus your {verb} on these files only.\n"
+        )
+    if scope:
+        return (
+            f"\n\nNOTE: This review is scoped to the `{scope}` subdirectory "
+            f"of a monorepo. All file paths are relative to the repo root. "
+            f"Focus your {verb} on files under `{scope}`.\n"
+        )
+    return ""
+
+
 def _run_step_emit(
     step_num: int,
     run_dir: str,
@@ -565,12 +585,9 @@ def _run_step_emit(
         },
     )
 
-    if files:
-        files_note: str = (
-            f"\n\nNOTE: This review is scoped to the following files: {', '.join(files)}. "
-            f"Focus your review on these files only.\n"
-        )
-        prompt = files_note + prompt
+    scope_note: str = _build_scope_note(files, None, "review")
+    if scope_note:
+        prompt = scope_note + prompt
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_review_emit_debug.txt")
     result: dict = invoke_claude(
@@ -689,21 +706,8 @@ def _run_step_fix(
 
     prompt: str = build_prompt(PROMPT_FIX, variables)
 
-    # When scoped to specific files, add context so the fix agent focuses there.
-    if files:
-        files_note: str = (
-            f"\n\nNOTE: This review is scoped to the following files: {', '.join(files)}. "
-            f"Focus your fixes on these files only.\n"
-        )
-        prompt = files_note + prompt
-    elif scope:
-        # When scoped to a monorepo subdirectory, add context so the fix agent
-        # knows file paths are relative to repo root, not the scope directory.
-        scope_note: str = (
-            f"\n\nNOTE: This review is scoped to the `{scope}` subdirectory "
-            f"of a monorepo. All file paths are relative to the repo root. "
-            f"Focus your fixes on files under `{scope}`.\n"
-        )
+    scope_note: str = _build_scope_note(files, scope, "fixes")
+    if scope_note:
         prompt = scope_note + prompt
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_fix_debug.txt")
@@ -894,18 +898,8 @@ def _run_step_metrics_fix(
         },
     )
 
-    if files:
-        files_note: str = (
-            f"\n\nNOTE: This review is scoped to the following files: {', '.join(files)}. "
-            f"Focus your fixes on these files only.\n"
-        )
-        prompt = files_note + prompt
-    elif scope:
-        scope_note: str = (
-            f"\n\nNOTE: This review is scoped to the `{scope}` subdirectory "
-            f"of a monorepo. All file paths are relative to the repo root. "
-            f"Focus your fixes on files under `{scope}`.\n"
-        )
+    scope_note: str = _build_scope_note(files, scope, "fixes")
+    if scope_note:
         prompt = scope_note + prompt
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_metrics_fix_debug.txt")
@@ -1024,18 +1018,8 @@ def _run_step_simplify(
         },
     )
 
-    if files:
-        files_note: str = (
-            f"\n\nNOTE: This review is scoped to the following files: {', '.join(files)}. "
-            f"Focus your simplifications on these files only.\n"
-        )
-        prompt = files_note + prompt
-    elif scope:
-        scope_note: str = (
-            f"\n\nNOTE: This review is scoped to the `{scope}` subdirectory "
-            f"of a monorepo. All file paths are relative to the repo root. "
-            f"Focus your simplifications on files under `{scope}`.\n"
-        )
+    scope_note: str = _build_scope_note(files, scope, "simplifications")
+    if scope_note:
         prompt = scope_note + prompt
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_simplify_debug.txt")
@@ -1096,18 +1080,8 @@ def _run_step_update_docs(
         },
     )
 
-    if files:
-        files_note: str = (
-            f"\n\nNOTE: This review is scoped to the following files: {', '.join(files)}. "
-            f"Focus on documentation files near these files.\n"
-        )
-        prompt = files_note + prompt
-    elif scope:
-        scope_note: str = (
-            f"\n\nNOTE: This review is scoped to the `{scope}` subdirectory "
-            f"of a monorepo. All file paths are relative to the repo root. "
-            f"Focus on documentation files under or near `{scope}`.\n"
-        )
+    scope_note: str = _build_scope_note(files, scope, "documentation")
+    if scope_note:
         prompt = scope_note + prompt
 
     debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_update_docs_debug.txt")

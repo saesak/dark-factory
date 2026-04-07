@@ -18,7 +18,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from cli import DEFAULTS, _deep_merge, build_parser, load_config
-from lib.git_context import parse_pr_ref
+from lib.git_context import compute_diff, list_changed_files, parse_pr_ref
 from lib.invoke import build_prompt, invoke_claude
 from lib.run_logger import (
     _next_sequence_number,
@@ -135,6 +135,16 @@ class TestBuildParser:
         assert args.no_simplify is True
         assert args.repo_path == "/tmp/repo"
         assert args.scope == "backend/"
+
+    def test_review_with_files_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["review", "--files", "a.py,b.py"])
+        assert args.files == "a.py,b.py"
+
+    def test_review_with_model_flag(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["review", "--model", "sonnet"])
+        assert args.model == "sonnet"
 
     def test_stub_subcommands(self) -> None:
         parser = build_parser()
@@ -261,6 +271,16 @@ class TestInvokeClaude:
         assert result["exit_code"] == 1
         assert mock.call_count == 1
 
+    def test_model_flag_passed_to_command(self) -> None:
+        with patch(
+            "lib.invoke.subprocess.run", side_effect=self._mock_run_success
+        ) as mock:
+            invoke_claude("prompt", ["Read"], 60000, "/tmp", model="sonnet")
+        cmd: list[str] = mock.call_args[0][0]
+        assert "--model" in cmd
+        model_idx: int = cmd.index("--model")
+        assert cmd[model_idx + 1] == "sonnet"
+
 
 # ── lib/git_context.py ──────────────────────────────────────────────────
 
@@ -286,6 +306,58 @@ class TestParsePrRef:
         repo, num = parse_pr_ref("http://github.com/org/project/pull/99")
         assert repo == "org/project"
         assert num == 99
+
+
+class TestComputeDiff:
+    def _mock_diff_result(
+        self, *args: Any, **kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args[0], returncode=0, stdout="diff output", stderr=""
+        )
+
+    def test_files_filter_appended_to_command(self) -> None:
+        with patch(
+            "lib.git_context.subprocess.run", side_effect=self._mock_diff_result
+        ) as mock:
+            compute_diff("/tmp", "origin/main", files=["a.py", "b.py"])
+        cmd: list[str] = mock.call_args[0][0]
+        assert cmd[-3:] == ["--", "a.py", "b.py"]
+
+    def test_files_takes_precedence_over_scope(self) -> None:
+        with patch(
+            "lib.git_context.subprocess.run", side_effect=self._mock_diff_result
+        ) as mock:
+            compute_diff("/tmp", "origin/main", scope="backend/", files=["a.py"])
+        cmd: list[str] = mock.call_args[0][0]
+        assert cmd[-2:] == ["--", "a.py"]
+        assert "backend/" not in cmd
+
+
+class TestListChangedFiles:
+    def _mock_name_only_result(
+        self, *args: Any, **kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args[0], returncode=0, stdout="a.py\nb.py\n", stderr=""
+        )
+
+    def test_files_filter_appended_to_command(self) -> None:
+        with patch(
+            "lib.git_context.subprocess.run", side_effect=self._mock_name_only_result
+        ) as mock:
+            list_changed_files("/tmp", "origin/main", files=["a.py", "b.py"])
+        cmd: list[str] = mock.call_args[0][0]
+        assert cmd[-3:] == ["--", "a.py", "b.py"]
+
+    def test_files_takes_precedence_over_scope(self) -> None:
+        with patch(
+            "lib.git_context.subprocess.run", side_effect=self._mock_name_only_result
+        ) as mock:
+            list_changed_files("/tmp", "origin/main", scope="backend/", files=["a.py"])
+        cmd: list[str] = mock.call_args[0][0]
+        assert cmd[-2:] == ["--", "a.py"]
+        assert "backend/" not in cmd
 
 
 # ── lib/run_logger.py ───────────────────────────────────────────────────

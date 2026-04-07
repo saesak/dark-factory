@@ -1,4 +1,0 @@
-pyyaml
-radon
-diff-cover
-ruff

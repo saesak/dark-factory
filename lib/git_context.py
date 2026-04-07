@@ -147,8 +147,8 @@ def list_changed_files(
     if result.returncode != 0:
         print(f"Warning: git diff --name-only failed: {result.stderr.strip()}")
         return []
-    files: list[str] = [f for f in result.stdout.strip().split("\n") if f]
-    return files
+    changed: list[str] = [f for f in result.stdout.strip().split("\n") if f]
+    return changed
 
 
 def detect_worktree_name(repo_path: str) -> str:

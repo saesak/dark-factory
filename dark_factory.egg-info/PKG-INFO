@@ -1,9 +1,0 @@
-Metadata-Version: 2.4
-Name: dark-factory
-Version: 0.1.0
-Summary: Autonomous code quality pipeline using claude -p and deterministic metric tools
-Requires-Python: >=3.11
-Requires-Dist: pyyaml
-Requires-Dist: radon
-Requires-Dist: diff-cover
-Requires-Dist: ruff
