@@ -26,6 +26,7 @@ import json
 import subprocess
 import sys
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,7 @@ from lib.run_logger import (  # noqa: E402
     save_step_output,
     write_run_json,
 )
+from lib.project_context import discover_project_docs  # noqa: E402
 from metrics.runner import run_metrics  # noqa: E402
 
 # Prompt file paths
@@ -61,10 +63,13 @@ PROMPT_VERIFY: str = str(PROMPTS_DIR / "review_verify.md")
 PROMPT_METRICS_FIX: str = str(PROMPTS_DIR / "metrics_fix.md")
 PROMPT_SIMPLIFY: str = str(PROMPTS_DIR / "simplify.md")
 PROMPT_UPDATE_DOCS: str = str(PROMPTS_DIR / "update_docs.md")
+PROMPT_REVIEW_INVARIANTS: str = str(PROMPTS_DIR / "review_invariants.md")
+PROMPT_REVIEW_DOCS: str = str(PROMPTS_DIR / "review_docs.md")
 
 # Tool sets
 READONLY_TOOLS: list[str] = ["Read", "Glob", "Grep", "Bash"]
 WRITE_TOOLS: list[str] = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
+INVARIANT_TOOLS: list[str] = ["Read", "Glob", "Grep", "Bash", "Agent"]
 
 
 def run(config: dict[str, Any]) -> dict[str, Any]:
@@ -172,6 +177,30 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
     changed_files_str: str = "\n".join(changed_files)
     sha_start: str = get_current_sha(repo_path)
 
+    # Discover project-specific documentation
+    project_docs: dict[str, Any] = discover_project_docs(repo_path, changed_files)
+    has_project_context: bool = bool(
+        project_docs.get("invariants") or project_docs.get("conventions")
+    )
+    has_doc_check_context: bool = bool(
+        project_docs.get("stale_docs") or project_docs.get("doc_guidelines")
+    )
+
+    # Build conventions block for emit prompt
+    conventions_block: str = ""
+    if project_docs.get("conventions"):
+        conventions_block = (
+            "\n## Repo-Specific Conventions\n\n"
+            "In addition to the engineering preferences above, this repo has documented "
+            "conventions. Check the diff against these:\n\n"
+            + project_docs["conventions"]
+        )
+
+    # Read config flags for new passes
+    no_invariants: bool = config.get("no_invariants", False)
+    no_docs_check: bool = config.get("no_docs_check", False)
+    invariants_only: bool = config.get("invariants_only", False)
+
     if not changed_files:
         print("No changes detected. Nothing to review.")
         return {
@@ -266,24 +295,91 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
     # --- DRY RUN MODE ---
     if dry_run:
         print("[dry-run] Emitting issues only, will not apply fixes.")
-        emit_output = _run_step_emit(
-            1,
-            run_dir,
-            original_context_instructions,
-            changed_files_str,
-            base_branch,
-            timeouts,
-            repo_path,
-            steps_log,
-            files=files,
-            model=model,
-        )
-        if not emit_output:
+
+        run_invariants: bool = has_project_context and not no_invariants
+        run_docs_check: bool = has_doc_check_context and not no_docs_check
+
+        # Prepare doc check data
+        stale_docs_json: str = json.dumps(project_docs.get("stale_docs", []))
+        doc_index_json: str = json.dumps(project_docs.get("doc_index", []))
+        changed_md_str: str = "\n".join(project_docs.get("changed_md_files", []))
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            # Code quality + conventions (skip if invariants_only)
+            emit_future: Future[str] | None = None
+            if not invariants_only:
+                emit_future = executor.submit(
+                    _run_step_emit,
+                    1,
+                    run_dir,
+                    original_context_instructions,
+                    changed_files_str,
+                    base_branch,
+                    timeouts,
+                    repo_path,
+                    steps_log,
+                    files,
+                    model,
+                    conventions_block,
+                )
+
+            # Invariant check
+            invariants_future: Future[str] | None = None
+            if run_invariants:
+                invariants_future = executor.submit(
+                    _run_step_invariants,
+                    12,
+                    run_dir,
+                    original_context_instructions,
+                    changed_files_str,
+                    project_docs["invariants"],
+                    project_docs.get("conventions", ""),
+                    timeouts,
+                    repo_path,
+                    steps_log,
+                    files,
+                    model,
+                )
+
+            # Doc check
+            docs_future: Future[str] | None = None
+            if run_docs_check:
+                docs_future = executor.submit(
+                    _run_step_docs_check,
+                    13,
+                    run_dir,
+                    original_context_instructions,
+                    changed_files_str,
+                    stale_docs_json,
+                    doc_index_json,
+                    project_docs.get("doc_guidelines", ""),
+                    changed_md_str,
+                    timeouts,
+                    repo_path,
+                    steps_log,
+                    files,
+                    model,
+                )
+
+        # Collect results
+        emit_output = emit_future.result() if emit_future else ""
+        invariants_output: str = invariants_future.result() if invariants_future else ""
+        docs_output: str = docs_future.result() if docs_future else ""
+
+        if emit_future and not emit_output:
             final_status = "error"
         else:
             print("\n--- Review Issues ---")
-            print(emit_output)
+            if emit_output:
+                print(emit_output)
+            if invariants_output:
+                print("\n--- Invariant Check ---")
+                print(invariants_output)
+            if docs_output:
+                print("\n--- Documentation Check ---")
+                print(docs_output)
             print("--- End Issues ---\n")
+
         return _finalize_run(
             run_dir,
             run_id,
@@ -326,6 +422,7 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                 steps_log,
                 files=files,
                 model=model,
+                project_conventions=conventions_block,
             )
             if not emit_output:
                 final_status = "error"
@@ -512,6 +609,67 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
                 model=model,
             )
 
+    # Steps 12-13: Project-specific checks (parallel)
+    if final_status in ("pass", "max_iterations") and not dry_run:
+        run_invariants: bool = has_project_context and not no_invariants
+        run_docs_check: bool = has_doc_check_context and not no_docs_check
+
+        if run_invariants or run_docs_check:
+            final_changed: list[str] = list_changed_files(
+                repo_path, base_branch, scope, files
+            )
+            final_changed_str: str = "\n".join(final_changed)
+            stale_docs_json: str = json.dumps(project_docs.get("stale_docs", []))
+            doc_index_json: str = json.dumps(project_docs.get("doc_index", []))
+            changed_md_str: str = "\n".join(project_docs.get("changed_md_files", []))
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                inv_future: Future[str] | None = None
+                if run_invariants:
+                    inv_future = executor.submit(
+                        _run_step_invariants,
+                        12,
+                        run_dir,
+                        current_context_instructions,
+                        final_changed_str,
+                        project_docs["invariants"],
+                        project_docs.get("conventions", ""),
+                        timeouts,
+                        repo_path,
+                        steps_log,
+                        files,
+                        model,
+                    )
+                doc_future: Future[str] | None = None
+                if run_docs_check:
+                    doc_future = executor.submit(
+                        _run_step_docs_check,
+                        13,
+                        run_dir,
+                        current_context_instructions,
+                        final_changed_str,
+                        stale_docs_json,
+                        doc_index_json,
+                        project_docs.get("doc_guidelines", ""),
+                        changed_md_str,
+                        timeouts,
+                        repo_path,
+                        steps_log,
+                        files,
+                        model,
+                    )
+
+            if inv_future:
+                inv_output: str = inv_future.result()
+                if inv_output:
+                    print("\n--- Invariant Check ---")
+                    print(inv_output)
+            if doc_future:
+                doc_output: str = doc_future.result()
+                if doc_output:
+                    print("\n--- Documentation Check ---")
+                    print(doc_output)
+
     # Correct issue accounting: remaining = found - fixed
     if issues_remaining == 0 and issues_fixed < issues_found:
         issues_remaining = issues_found - issues_fixed
@@ -570,6 +728,7 @@ def _run_step_emit(
     steps_log: list[dict[str, Any]],
     files: list[str] | None = None,
     model: str | None = None,
+    project_conventions: str = "",
 ) -> str:
     """Step 1: LLM Review — Emit Issues."""
     print("[Step 1/8] Running LLM review (emit issues)...")
@@ -582,6 +741,7 @@ def _run_step_emit(
             "CONTEXT_INSTRUCTIONS": context_instructions,
             "CHANGED_FILES": changed_files_str,
             "BASE_BRANCH": base_branch,
+            "PROJECT_CONVENTIONS": project_conventions,
         },
     )
 
@@ -1111,6 +1271,140 @@ def _run_step_update_docs(
         return ""
     elif result["exit_code"] != 0:
         print(f"  WARNING: Step 11 exited with code {result['exit_code']}")
+        return ""
+
+    print(f"  Completed in {result['wall_clock_ms'] / 1000:.1f}s")
+    return output
+
+
+def _run_step_invariants(
+    step_num: int,
+    run_dir: str,
+    context_instructions: str,
+    changed_files_str: str,
+    invariants: str,
+    conventions: str,
+    timeouts: dict[str, int],
+    repo_path: str,
+    steps_log: list[dict[str, Any]],
+    files: list[str] | None = None,
+    model: str | None = None,
+) -> str:
+    """Step N: Check against project invariants and conventions."""
+    print(f"[Step {step_num}] Running invariant and convention check...")
+    step_start: str = datetime.now(timezone.utc).isoformat()
+    timeout: int = timeouts.get("review_invariants", 600000)
+
+    prompt: str = build_prompt(
+        PROMPT_REVIEW_INVARIANTS,
+        {
+            "CONTEXT_INSTRUCTIONS": context_instructions,
+            "CHANGED_FILES": changed_files_str,
+            "INVARIANTS": invariants,
+            "CONVENTIONS": conventions,
+        },
+    )
+
+    scope_note: str = _build_scope_note(files, None, "invariant check")
+    if scope_note:
+        prompt = scope_note + prompt
+
+    debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_invariants_debug.txt")
+    result: dict = invoke_claude(
+        prompt, INVARIANT_TOOLS, timeout, repo_path, debug_file=debug_file, model=model
+    )
+
+    output: str = result["stdout"]
+    save_step_output(run_dir, step_num, "invariants", output)
+    if result["stderr"]:
+        save_step_error(run_dir, step_num, "invariants", result["stderr"])
+
+    steps_log.append(
+        {
+            "step": step_num,
+            "name": "invariants",
+            "started_at": step_start,
+            "wall_clock_ms": result["wall_clock_ms"],
+            "exit_code": result["exit_code"],
+            "timed_out": result["timed_out"],
+            "output_path": f"steps/{step_num}_invariants_stdout.txt",
+        }
+    )
+
+    if result["timed_out"]:
+        print(f"  WARNING: Step {step_num} timed out")
+        return ""
+    elif result["exit_code"] != 0:
+        print(f"  WARNING: Step {step_num} exited with code {result['exit_code']}")
+        return ""
+
+    print(f"  Completed in {result['wall_clock_ms'] / 1000:.1f}s")
+    return output
+
+
+def _run_step_docs_check(
+    step_num: int,
+    run_dir: str,
+    context_instructions: str,
+    changed_files_str: str,
+    stale_docs: str,
+    doc_index: str,
+    doc_guidelines: str,
+    changed_md_files: str,
+    timeouts: dict[str, int],
+    repo_path: str,
+    steps_log: list[dict[str, Any]],
+    files: list[str] | None = None,
+    model: str | None = None,
+) -> str:
+    """Step N: Check documentation staleness and quality."""
+    print(f"[Step {step_num}] Running documentation check...")
+    step_start: str = datetime.now(timezone.utc).isoformat()
+    timeout: int = timeouts.get("review_docs", 300000)
+
+    prompt: str = build_prompt(
+        PROMPT_REVIEW_DOCS,
+        {
+            "CONTEXT_INSTRUCTIONS": context_instructions,
+            "CHANGED_FILES": changed_files_str,
+            "STALE_DOCS": stale_docs,
+            "DOC_INDEX": doc_index,
+            "DOC_GUIDELINES": doc_guidelines,
+            "CHANGED_MD_FILES": changed_md_files,
+        },
+    )
+
+    scope_note: str = _build_scope_note(files, None, "documentation check")
+    if scope_note:
+        prompt = scope_note + prompt
+
+    debug_file: str = str(Path(run_dir) / "steps" / f"{step_num}_docs_check_debug.txt")
+    result: dict = invoke_claude(
+        prompt, READONLY_TOOLS, timeout, repo_path, debug_file=debug_file, model=model
+    )
+
+    output: str = result["stdout"]
+    save_step_output(run_dir, step_num, "docs_check", output)
+    if result["stderr"]:
+        save_step_error(run_dir, step_num, "docs_check", result["stderr"])
+
+    steps_log.append(
+        {
+            "step": step_num,
+            "name": "docs_check",
+            "started_at": step_start,
+            "wall_clock_ms": result["wall_clock_ms"],
+            "exit_code": result["exit_code"],
+            "timed_out": result["timed_out"],
+            "output_path": f"steps/{step_num}_docs_check_stdout.txt",
+        }
+    )
+
+    if result["timed_out"]:
+        print(f"  WARNING: Step {step_num} timed out")
+        return ""
+    elif result["exit_code"] != 0:
+        print(f"  WARNING: Step {step_num} exited with code {result['exit_code']}")
         return ""
 
     print(f"  Completed in {result['wall_clock_ms'] / 1000:.1f}s")

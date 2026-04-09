@@ -51,6 +51,8 @@ DEFAULTS: dict[str, Any] = {
         "verify": 600000,
         "simplify": 600000,
         "update_docs": 300000,
+        "review_invariants": 600000,  # 10 min
+        "review_docs": 600000,  # 10 min
         "test": 600000,
     },
 }
@@ -163,6 +165,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip the documentation update step after review",
     )
     review_parser.add_argument(
+        "--no-invariants",
+        action="store_true",
+        help="Skip project-specific invariant and convention check",
+    )
+    review_parser.add_argument(
+        "--no-docs-check",
+        action="store_true",
+        help="Skip documentation staleness and quality check",
+    )
+    review_parser.add_argument(
+        "--invariants-only",
+        action="store_true",
+        help="Run only invariant + doc passes (for cross-cutting CI job)",
+    )
+    review_parser.add_argument(
         "--repo-path",
         type=str,
         default=None,
@@ -257,6 +274,9 @@ def cmd_review(args: argparse.Namespace, config: dict[str, Any]) -> None:
     config["no_metrics"] = args.no_metrics
     config["no_simplify"] = args.no_simplify
     config["no_docs"] = args.no_docs
+    config["no_invariants"] = args.no_invariants
+    config["no_docs_check"] = args.no_docs_check
+    config["invariants_only"] = args.invariants_only
     config["scope"] = args.scope
     config["files"] = args.files.split(",") if args.files else None
     config["model"] = args.model

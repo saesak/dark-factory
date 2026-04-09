@@ -20,6 +20,8 @@ Use these to guide your review and recommendations:
 - I err on the side of handling more edge cases, not fewer; thoughtfulness > speed.
 - Bias toward explicit over clever.
 
+{{PROJECT_CONVENTIONS}}
+
 ## Review Scope
 
 Review ONLY the changes introduced by this branch. Do not review files that were not changed by this branch.

@@ -11,6 +11,8 @@ Markdown prompt templates passed to `claude -p` via the `lib/invoke.py` wrapper.
 | `review_fix.md` | BUILT | review | Apply fixes | Full (Read, Write, Edit, Bash, Glob, Grep) |
 | `review_verify.md` | BUILT | review | Verification | Read-only (Read, Glob, Grep, Bash) |
 | `metrics_fix.md` | BUILT | review | Fix metric violations | Full (Read, Write, Edit, Bash, Glob, Grep) |
+| `review_invariants.md` | BUILT | review | Invariant & convention check | Read-only (Read, Glob, Grep, Bash, Agent) |
+| `review_docs.md` | BUILT | review | Doc staleness/quality check | Read-only (Read, Glob, Grep, Bash) |
 | `simplify.md` | BUILT | review | Code simplification | Full (Read, Write, Edit, Bash, Glob, Grep) |
 
 ## Planned Prompts
@@ -56,6 +58,10 @@ The orchestrator replaces `{{VARIABLE_NAME}}` placeholders before passing the pr
 | `{{FIX_PLAN}}` | Consolidated fix plan from coherence step | run_logger.py | review_fix |
 | `{{PREVIOUS_ISSUES}}` | Issues from original review (for reference) | run_logger.py | review_verify |
 | `{{METRICS_JSON}}` | Deterministic metric violations as JSON | metrics/runner.py | metrics_fix |
+| `{{STALE_DOCS}}` | JSON array of docs whose source_files overlap changed code | review.py | review_docs |
+| `{{DOC_INDEX}}` | JSON array of all .md files in repo (path + title) | review.py | review_docs |
+| `{{DOC_GUIDELINES}}` | Content of docs/DOCUMENTATION.md (may be empty) | review.py | review_docs |
+| `{{CHANGED_MD_FILES}}` | Newline-separated list of .md files changed in this PR | git_context.py | review_docs |
 
 ### 5. Performance Review Has a High Bar
 
