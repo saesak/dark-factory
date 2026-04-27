@@ -16,10 +16,7 @@ Rules that suppress low-signal findings in code review. Apply these alongside th
 
 ## Concrete don't-flag patterns
 
-These are specific cases observed in the wild. Add new ones as patterns recur — don't try to generalize across cases until you have ≥3 examples of the same pattern.
-
-- **DRY duplication that exists in files outside the PR diff.**
-  Example: A 3-line input validator is duplicated in 8 places across 3 model files; the PR only touches one of those files. Suggesting an extract-and-replace across all 8 sites expands the diff into unrelated files. The duplication is pre-existing; flag it as a follow-up note, don't block on it.
+These are specific cases observed in the wild. Add new ones as patterns recur.
 
 - **Defense-in-depth fixes for inputs that are currently hardcoded.**
   Example: Suggesting HTML escaping or URL sanitization on a value that is, in the current code, a compile-time constant. Until the input is widened to accept user content, the fix protects against nothing.
